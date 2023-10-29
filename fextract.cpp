@@ -5,16 +5,6 @@
 	================================================
 
 	v1.0 - First release.
-
-	Notes:
-
-	Basic archive format which stores the number of files it contains as a single byte, which limits the max. files to 255.
-	Following the number of elements follows 3 unknown values which don't seem to affect much.
-
-	Proceeding these unknown values is the table of contents, which uses a byte for the path (again limiting the path to 255 chars)
-	followed by the path itself (+1 byte for the null-byte). After the path, the ending offset for the data is stored in a 32-bit integer. 
-
-	After the table of contents, all file data is stored on top of eachother, sequentially and the resulting file is aligned to 2K boundaries.
 */
 #include <iostream>
 #include <fstream>
@@ -46,14 +36,10 @@ public:
 	{
 		ifstream ifs(in, ios::binary);
 
-		char num_elements = -1;
-		ifs.read(reinterpret_cast<char*>(&num_elements), 1);
+		int header_size = -1;
+		ifs.read(reinterpret_cast<char*>(&header_size), 4);
 
-		UnknownValues.push_back(ifs.get());
-		UnknownValues.push_back(ifs.get());
-		UnknownValues.push_back(ifs.get());
-
-		for (int i = 0; i < num_elements - 1; ++i)
+		while (ifs.tellg() != header_size-2)
 		{
 			char path_len = 0xFFu;
 			ifs.read(reinterpret_cast<char*>(&path_len), 1);
@@ -99,7 +85,7 @@ public:
 
 	int calc_toc_size()
 	{
-		int toc_size = 1 + (int)UnknownValues.size();
+		int toc_size = 4;
 		for (const auto& entry : Entries)
 		{
 			toc_size++;								// space for path_len
@@ -153,23 +139,11 @@ public:
 		if (ofs.good())
 		{
 			// write header
-			char num_elements = (char)Entries.size() + 1;
-			ofs.write(reinterpret_cast<char*>(&num_elements), 1);
+			int toc_size = calc_toc_size();
+			ofs.write(reinterpret_cast<char*>(&toc_size), 4);
 
-			// allows us to forge our own by using values we've seen previously,
-			// otherwise the code will write out the values obtained when parsing the file.
-			if (!UnknownValues.size())
-			{
-				UnknownValues.push_back(5);
-				UnknownValues.push_back(0);
-				UnknownValues.push_back(0);
-			}
-
-			for (char unk_val : UnknownValues)
-				ofs.write(reinterpret_cast<char*>(&unk_val), 1);
-		
 			// write out toc
-			int last_written_block = calc_toc_size();
+			int last_written_block = toc_size;
 			for (const auto& entry : Entries)
 			{
 				last_written_block += (int)entry.data.size();
@@ -218,7 +192,8 @@ int main(int argc, char ** argp)
 		}
 
 		SmallFile file(input_filepath);
-		if (file.Entries.size()) {
+		if (file.Entries.size()) 
+		{
 			fs::create_directories(data_dir);
 			file.extract(data_dir);
 			printf("Extracted %zd entries from '%s'\n", file.Entries.size(), input_filepath.string().c_str());
