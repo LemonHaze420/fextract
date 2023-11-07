@@ -90,9 +90,11 @@ public:
 		{
 			toc_size++;								// space for path_len
 			toc_size += (char)entry.path.size();	// string data
+			toc_size++;								// null-byte
 			toc_size += 4;							// offset
+
 		}
-		return toc_size;
+		return toc_size + 2;
 	}
 
 	size_t create(fs::path outputDir)
@@ -143,14 +145,15 @@ public:
 			ofs.write(reinterpret_cast<char*>(&toc_size), 4);
 
 			// write out toc
-			int last_written_block = toc_size;
+			int last_written_block = toc_size-2;
 			for (const auto& entry : Entries)
 			{
 				last_written_block += (int)entry.data.size();
 
-				char path_len = (char)entry.path.size() - 1;
+				char path_len = (char)entry.path.size();
 				ofs.write(reinterpret_cast<char*>(&path_len), 1);
-				ofs.write(entry.path.c_str(), path_len + 1);
+				ofs.write(entry.path.c_str(), path_len);
+				ofs.put(0);
 				ofs.write(reinterpret_cast<char*>(&last_written_block), 4);
 			}
 
